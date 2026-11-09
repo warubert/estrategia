@@ -1,0 +1,1 @@
+/home/will/projetos/crablo/target/debug/crablo: /home/will/projetos/crablo/src/entities.rs /home/will/projetos/crablo/src/game.rs /home/will/projetos/crablo/src/main.rs /home/will/projetos/crablo/src/map.rs /home/will/projetos/crablo/src/renderer.rs
