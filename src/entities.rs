@@ -3,7 +3,6 @@ pub struct Monster {
     pub x: usize,
     pub y: usize,
     pub hp: i32,
-    pub cd: f32,
 }
 
 //Floating text

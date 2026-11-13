@@ -17,12 +17,12 @@ pub fn to_screen(x: usize, y: usize, cam: (f32, f32)) -> (f32, f32) {
     )
 }
 
-pub fn to_tile(sx: f32, sy: f32, cam: (f32, f32)) -> (usize, usize) {
-    let (ax, ay) = (sx - cam.0, sy - cam.1);
+pub fn to_tile(sx: f32, sy: f32, cam: (f32, f32)) -> (isize, isize) {
+    let (ax, ay) = (sx - cam.0, sy - cam.1 + TILE_SIZE.1 * 1.5);
 
     (
-        ((ax / TILE_SIZE.0 + ay / TILE_SIZE.1) / 2.) as usize,
-        ((ay / TILE_SIZE.1 - ax / TILE_SIZE.0) / 2.) as usize,
+        ((ax / TILE_SIZE.0 + ay / TILE_SIZE.1) / 2.).round() as isize,
+        ((ay / TILE_SIZE.1 - ax / TILE_SIZE.0) / 2.).round() as isize,
     )
 }
 
@@ -74,13 +74,13 @@ pub fn draw_walls(x: usize, y: usize, cam: (f32, f32)) {
     let (sx, sy) = to_screen(x, y, cam);
 
     let v = [
+        vec2(sx, sy - 72.),
+        vec2(sx + 32., sy - 56.),
         vec2(sx, sy - 40.),
+        vec2(sx - 32., sy - 56.),
         vec2(sx + 32., sy - 24.),
         vec2(sx, sy - 8.),
         vec2(sx - 32., sy - 24.),
-        vec2(sx + 32., sy),
-        vec2(sx, sy + 16.),
-        vec2(sx - 32., sy),
     ];
 
     let colors = [
@@ -100,5 +100,82 @@ pub fn draw_walls(x: usize, y: usize, cam: (f32, f32)) {
     //draw outlines
     for (a, b) in [(0, 1), (1, 2), (2, 3), (3, 0), (1, 4), (2, 5), (3, 6)] {
         draw_line(v[a].x, v[a].y, v[b].x, v[b].y, 1.0, BLACK);
+    }
+}
+
+pub fn draw_floor(x: usize, y: usize, cam: (f32, f32), highlighted: bool) {
+    let (sx, sy) = to_screen(x, y, cam);
+    let top = vec2(sx, sy - 40.);
+    let right = vec2(sx + 32., sy - 24.);
+    let bottom = vec2(sx, sy - 8.);
+    let left = vec2(sx - 32., sy - 24.);
+    let border = Color::new(0.65, 0.65, 0.65, 1.0);
+
+    if highlighted {
+        let highlight = Color::new(0.65, 0.85, 1.0, 1.0);
+        draw_triangle(top, right, bottom, highlight);
+        draw_triangle(top, bottom, left, highlight);
+    }
+
+    for (a, b) in [(top, right), (right, bottom), (bottom, left), (left, top)] {
+        draw_line(a.x, a.y, b.x, b.y, 1.0, border);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bfs_never_includes_wall_tiles() {
+        let mut map = [[Tile::Floor; MAP]; MAP];
+        map[1][2] = Tile::Wall;
+        map[2][2] = Tile::Wall;
+        map[3][2] = Tile::Wall;
+
+        let path = bfs(&map, (1, 2), (3, 2));
+
+        assert!(!path.is_empty());
+        assert!(path.iter().all(|&(x, y)| map[y][x] == Tile::Floor));
+        assert_eq!(path.last(), Some(&(3, 2)));
+    }
+
+    #[test]
+    fn to_tile_maps_floor_centers_to_their_isometric_tiles() {
+        let cam = (320.0, 50.0);
+
+        for y in 0..MAP {
+            for x in 0..MAP {
+                let (sx, sy) = to_screen(x, y, cam);
+                assert_eq!(
+                    to_tile(sx, sy - TILE_SIZE.1 * 1.5, cam),
+                    (x as isize, y as isize)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn to_tile_maps_points_inside_a_floor_tile_to_that_tile() {
+        let cam = (320.0, 50.0);
+        let offsets = [
+            (0.0, 0.0),
+            (12.0, 4.0),
+            (-12.0, 4.0),
+            (0.0, -8.0),
+            (0.0, 8.0),
+        ];
+
+        for y in 0..MAP {
+            for x in 0..MAP {
+                let (sx, sy) = to_screen(x, y, cam);
+                for (dx, dy) in offsets {
+                    assert_eq!(
+                        to_tile(sx + dx, sy - TILE_SIZE.1 * 1.5 + dy, cam),
+                        (x as isize, y as isize)
+                    );
+                }
+            }
+        }
     }
 }

@@ -1,10 +1,10 @@
-use macroquad::prelude::*;
 use crate::map::to_screen;
+use macroquad::prelude::*;
 
 //draw hero and monsters
 pub fn draw_stickman(x: usize, y: usize, cam: (f32, f32), enemy: bool) {
-    let (sx, mut sy) = to_screen(x, y, cam);
-    sy += 16.;
+    let (sx, sy) = to_screen(x, y, cam);
+    let sy = sy - 24.;
 
     //shadow
     draw_ellipse(sx, sy + 3., 10., 5., 0., Color::new(0., 0., 0., 0.2));
