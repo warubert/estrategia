@@ -3,10 +3,13 @@ use macroquad::prelude::*;
 
 mod entities;
 mod game;
-mod map;
+mod mapas;
+mod monstros;
+mod personagens;
 mod renderer;
 
 use game::Game;
+use personagens::PlayerActions;
 
 enum AppState {
     Menu,
@@ -47,7 +50,7 @@ async fn main() {
                 );
 
                 //victory vs defeat logic
-                let (msg, color) = if game.hp > 0 {
+                let (msg, color) = if game.player().health() > 0 {
                     ("VITÓRIA", GOLD)
                 } else {
                     ("GAME OVER", RED)
@@ -61,7 +64,7 @@ async fn main() {
                     color,
                 );
                 draw_text(
-                    format!("Pontuação: {}", game.score),
+                    format!("Pontuação: {}", game.player().score()),
                     screen_width() / 2. - 80.,
                     screen_height() / 2. + 50.,
                     30.,

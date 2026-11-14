@@ -1,10 +1,3 @@
-//Monsters
-pub struct Monster {
-    pub x: usize,
-    pub y: usize,
-    pub hp: i32,
-}
-
 //Floating text
 pub struct DmgText {
     pub x: f32,
