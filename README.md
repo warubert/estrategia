@@ -8,6 +8,14 @@ cd crablo
 cargo run
 ```
 
+### Testes automatizados
+
+Execute `cargo test` para verificar as regras de turnos, combate, coleta de
+moedas, movimento, navegação e coordenadas isométricas. Esses testes não abrem
+uma janela e não verificam a renderização ou os cliques reais do mouse.
+Os testes ficam em `tests/unit/`, separados por arquivo de código testado e
+vinculados como testes unitários aos seus módulos.
+
 ## Como jogar
 
 O jogo é por turnos: o jogador age primeiro, depois cada monstro vivo age uma
@@ -29,20 +37,49 @@ morre ou todos os monstros são derrotados.
 ```
 src/
 ├── main.rs       # Entry point, AppState e loop principal
-├── game.rs       # Struct Game — estado, lógica de update e draw
-├── map.rs        # Tile, constantes, coordenadas isométricas, BFS e draw_walls
-├── entities.rs   # Structs Monster e DmgText
-└── renderer.rs   # draw_stickman (herói e monstros)
+├── game.rs       # Orquestra turnos, combate, moedas e interface
+├── personagens/
+│   ├── mod.rs        # Exportações do domínio
+│   ├── interface.rs  # Trait PlayerActions e resultado do movimento
+│   └── warrior/
+│       └── mod.rs    # Implementação do jogador Warrior
+├── monstros/
+│   ├── mod.rs        # Exportações do domínio
+│   ├── interface.rs  # Trait MonsterBehavior e ações
+│   └── goblin/
+│       └── mod.rs    # Implementação do monstro Goblin
+├── mapas/
+│   ├── mod.rs        # Exportações e constantes compartilhadas
+│   ├── interface.rs  # Trait GameMap, posição e tile
+│   ├── geometry.rs   # Coordenadas isométricas e distância
+│   └── mapa1/
+│       └── mod.rs    # Implementação do Mapa1 e BFS
+├── entities.rs   # Texto flutuante de dano e ouro
+└── renderer.rs   # Desenho dos tiles e personagens
+tests/
+└── unit/
+    ├── game.rs       # Turnos e regras do jogo
+    ├── geometry.rs   # Coordenadas isométricas
+    ├── mapa1.rs      # Navegação e tiles do mapa
+    ├── goblin.rs     # Comportamento do monstro
+    └── warrior.rs    # Estado e movimento do jogador
 ```
 
 ### Principais componentes
 
-- **`Game`** (`game.rs`) — estado central do jogo (mapa, jogador, monstros, ouro, score)
-- **`bfs()`** (`map.rs`) — algoritmo de pathfinding BFS usado pelo jogador e pelos monstros
-- **`to_screen()` / `to_tile()`** (`map.rs`) — conversão entre coordenadas de tile e coordenadas de tela (projeção isométrica)
+- **`Game`** (`game.rs`) — coordena os componentes e a ordem dos turnos, usando tipos genéricos para os três domínios
+- **`PlayerActions` / `Warrior`** (`personagens/`) — interface e implementação do estado e movimento do jogador
+- **`MonsterBehavior` / `Goblin`** (`monstros/`) — interface e implementação das decisões dos monstros
+- **`GameMap` / `Mapa1`** (`mapas/`) — acesso aos tiles e cálculo de caminhos por BFS; jogador e monstros dependem da interface
+- **`to_screen()` / `to_tile()`** (`mapas/geometry.rs`) — conversão entre coordenadas de tile e coordenadas de tela (projeção isométrica)
 - **`draw_stickman()`** (`renderer.rs`) — renderiza o herói e os monstros com linhas simples
-- **`draw_walls()`** (`map.rs`) — renderiza tiles de parede com faces 3D usando triângulos
+- **`draw_walls()`** (`renderer.rs`) — renderiza tiles de parede com faces 3D usando triângulos
 - **`DmgText`** (`entities.rs`) — textos animados flutuantes para feedback visual de dano e ouro
+
+Para acrescentar uma implementação, crie uma subpasta na pasta do domínio,
+implemente a trait de `interface.rs` e declare/exporte o módulo em `mod.rs`.
+As implementações atuais são selecionadas na construção de `Game`. Atualmente
+uma partida usa um único tipo concreto de monstro por vez.
 
 ## Estados do jogo
 
