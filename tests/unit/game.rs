@@ -29,11 +29,36 @@ fn game_can_use_an_alternative_map_implementation() {
         monster_turn_timer: 0.0,
         monsters: vec![Goblin::new((8, 8), 30)],
         texts: vec![],
+        next_text_id: 0,
         gold: vec![],
     };
     game.player_action((3, 2));
     assert_eq!(game.player.position(), (3, 2));
     assert_eq!(game.turn, Turn::Monster(0));
+}
+
+#[test]
+fn screen_click_selects_the_isometric_tile_and_starts_its_path() {
+    let mut game = Game::with_camera((0.0, 0.0));
+    let (screen_x, screen_y) = to_screen(4, 2, game.camera());
+    let cursor = (screen_x, screen_y - 24.0);
+
+    assert_eq!(game.hovered_tile(cursor), Some((4, 2)));
+    assert_eq!(game.preview_path(cursor).last(), Some(&(4, 2)));
+
+    game.click(cursor);
+
+    assert_eq!(game.turn, Turn::PlayerMoving);
+    assert_eq!(game.player.position(), (3, 2));
+}
+
+#[test]
+fn screen_click_outside_the_map_does_not_consume_the_turn() {
+    let mut game = Game::with_camera((0.0, 0.0));
+
+    game.click((-1000.0, -1000.0));
+
+    assert_eq!(game.turn, Turn::Player);
 }
 
 fn monster(x: usize, y: usize, hp: i32) -> Goblin {

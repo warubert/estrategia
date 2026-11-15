@@ -2,6 +2,8 @@
 
 ### Instalação e execução
 
+O jogo usa a engine Bevy 0.20.1 e requer Rust 1.97.1 ou mais recente.
+
 ```bash
 git clone https://github.com/warubert/crablo.git
 cd crablo
@@ -36,7 +38,7 @@ morre ou todos os monstros são derrotados.
 
 ```
 src/
-├── main.rs       # Entry point, AppState e loop principal
+├── main.rs       # App Bevy, recursos do jogo, entrada, HUD e estados
 ├── game.rs       # Orquestra turnos, combate, moedas e interface
 ├── personagens/
 │   ├── mod.rs        # Exportações do domínio
@@ -55,7 +57,7 @@ src/
 │   └── mapa1/
 │       └── mod.rs    # Implementação do Mapa1 e BFS
 ├── entities.rs   # Texto flutuante de dano e ouro
-└── renderer.rs   # Desenho dos tiles e personagens
+└── renderer.rs   # Malha 2D Bevy para mapa, caminho e personagens
 tests/
 └── unit/
     ├── game.rs       # Turnos e regras do jogo
@@ -72,8 +74,8 @@ tests/
 - **`MonsterBehavior` / `Goblin`** (`monstros/`) — interface e implementação das decisões dos monstros
 - **`GameMap` / `Mapa1`** (`mapas/`) — acesso aos tiles e cálculo de caminhos por BFS; jogador e monstros dependem da interface
 - **`to_screen()` / `to_tile()`** (`mapas/geometry.rs`) — conversão entre coordenadas de tile e coordenadas de tela (projeção isométrica)
-- **`draw_stickman()`** (`renderer.rs`) — renderiza o herói e os monstros com linhas simples
-- **`draw_walls()`** (`renderer.rs`) — renderiza tiles de parede com faces 3D usando triângulos
+- **`GameSession`** (`main.rs`) — conecta entrada do Bevy às regras independentes do jogo
+- **`renderer.rs`** — constrói a malha 2D isométrica e atualiza hover/caminho
 - **`DmgText`** (`entities.rs`) — textos animados flutuantes para feedback visual de dano e ouro
 
 Para acrescentar uma implementação, crie uma subpasta na pasta do domínio,

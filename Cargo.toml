@@ -4,4 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-macroquad = "0.4.15"
+bevy = { version = "0.20.1", default-features = false, features = [
+    "2d_bevy_render",
+    "default_app",
+    "default_font",
+    "bevy_winit",
+    "multi_threaded",
+    "std",
+    "x11",
+] }
