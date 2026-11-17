@@ -20,14 +20,20 @@ vinculados como testes unitários aos seus módulos.
 
 ## Como jogar
 
-O jogo é por turnos: o jogador age primeiro, depois cada monstro vivo age uma
-vez, e então começa uma nova rodada. No turno do jogador, passe o mouse sobre
-um destino para visualizar o caminho e clique para percorrê-lo até o destino
-como uma única ação. Os monstros agem após o movimento terminar. O caminho
-contorna monstros; ao clicar em um monstro distante, o jogador avança até ficar
-adjacente a ele. Em outro turno, clique no monstro adjacente para atacá-lo em vez
-de se mover.
-
+O jogo é por turnos: no turno do jogador, use o painel no canto inferior
+direito para escolher **Mover**, **Atacar** ou **Encerrar turno**. Ao escolher
+**Mover**, passe o mouse sobre um destino para visualizar o caminho e clique
+para percorrê-lo até o destino como uma única ação. O caminho contorna monstros;
+ao escolher um monstro distante como destino, o jogador avança até ficar
+adjacente a ele. **Atacar** fica habilitado quando há um monstro adjacente;
+selecione essa ação e clique no monstro para atacá-lo. Depois de mover ou
+atacar, cada monstro vivo age uma vez; **Encerrar turno** passa a vez aos
+monstros sem realizar uma ação do jogador.
+Use as setas **↑/↓** para navegar pelas opções e **Enter** para selecionar.
+Pressione **Esc** durante a seleção de movimento ou ataque para voltar ao menu
+de ações sem gastar o turno. Também é possível selecionar as opções pelo mouse.
+Os textos usam a fonte Lato incluída em `assets/fonts/`, com suporte a acentos
+do português; sua licença está em `assets/fonts/OFL.txt`.
 Cada monstro ataca se estiver adjacente ao jogador; caso contrário, tenta
 avançar um tile. Um monstro sem caminho livre passa sua vez. Cliques em paredes,
 fora do mapa ou em destinos inacessíveis não consomem o turno. As moedas são
@@ -39,7 +45,10 @@ morre ou todos os monstros são derrotados.
 ```
 src/
 ├── main.rs       # App Bevy, recursos do jogo, entrada, HUD e estados
-├── game.rs       # Orquestra turnos, combate, moedas e interface
+├── game.rs       # Orquestra turnos, combate, moedas e comandos do jogo
+├── ui/
+│   ├── window.rs      # Componentes reutilizáveis de janelas e botões
+│   └── action_menu.rs # Estado e opções específicas do menu de ações
 ├── personagens/
 │   ├── mod.rs        # Exportações do domínio
 │   ├── interface.rs  # Trait PlayerActions e resultado do movimento
@@ -75,6 +84,8 @@ tests/
 - **`GameMap` / `Mapa1`** (`mapas/`) — acesso aos tiles e cálculo de caminhos por BFS; jogador e monstros dependem da interface
 - **`to_screen()` / `to_tile()`** (`mapas/geometry.rs`) — conversão entre coordenadas de tile e coordenadas de tela (projeção isométrica)
 - **`GameSession`** (`main.rs`) — conecta entrada do Bevy às regras independentes do jogo
+- **`ui::window`** (`ui/window.rs`) — cria painéis e botões reutilizáveis com layout, estado visual e desabilitação
+- **`ui::action_menu`** (`ui/action_menu.rs`) — controla foco, navegação e modo de seleção sem acoplar o menu ao domínio do jogo
 - **`renderer.rs`** — constrói a malha 2D isométrica e atualiza hover/caminho
 - **`DmgText`** (`entities.rs`) — textos animados flutuantes para feedback visual de dano e ouro
 

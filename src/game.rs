@@ -80,6 +80,27 @@ impl<M: GameMap, P: PlayerActions, N: MonsterBehavior> Game<M, P, N> {
         self.player.health() <= 0 || self.monsters.is_empty()
     }
 
+    pub fn is_player_action_turn(&self) -> bool {
+        self.turn == Turn::Player && !self.is_over()
+    }
+
+    pub fn is_player_moving(&self) -> bool {
+        self.turn == Turn::PlayerMoving
+    }
+
+    pub fn can_attack(&self) -> bool {
+        let player = self.player.position();
+        self.monsters
+            .iter()
+            .any(|monster| crate::mapas::dist(player, monster.position()) == 1)
+    }
+
+    pub fn end_player_turn(&mut self) {
+        if self.is_player_action_turn() {
+            self.start_monster_turns();
+        }
+    }
+
     pub fn hovered_tile(&self, mouse: (f32, f32)) -> Option<Position> {
         let tile = to_tile(mouse.0, mouse.1, self.cam);
         (tile.0 >= 0 && tile.1 >= 0 && tile.0 < MAP as isize && tile.1 < MAP as isize)
@@ -106,14 +127,6 @@ impl<M: GameMap, P: PlayerActions, N: MonsterBehavior> Game<M, P, N> {
             Turn::Player => "Turno: jogador".to_owned(),
             Turn::PlayerMoving => "Turno: jogador (movendo)".to_owned(),
             Turn::Monster(i) => format!("Turno: monstro {}/{}", i + 1, self.monsters.len()),
-        }
-    }
-
-    pub fn click(&mut self, mouse: (f32, f32)) {
-        if self.turn == Turn::Player
-            && let Some(target) = self.hovered_tile(mouse)
-        {
-            self.player_action(target);
         }
     }
 
@@ -156,25 +169,35 @@ impl<M: GameMap, P: PlayerActions, N: MonsterBehavior> Game<M, P, N> {
         path
     }
 
-    fn player_action(&mut self, target: (usize, usize)) {
+    pub fn move_player_to(&mut self, target: Position) -> bool {
         if self.turn != Turn::Player || self.is_over() {
-            return;
+            return false;
         }
         let path = self.player_path(target);
-        let Some(&(nx, ny)) = path.first() else {
-            return;
-        };
-
-        if let Some(i) = self.monsters.iter().position(|m| m.position() == (nx, ny)) {
-            self.damage_monster(i, 10);
-            if !self.is_over() {
-                self.start_monster_turns();
-            }
-        } else {
-            self.player.start_movement(path);
-            self.turn = Turn::PlayerMoving;
-            self.advance_player_movement(0.0);
+        if path.is_empty() {
+            return false;
         }
+        self.player.start_movement(path);
+        self.turn = Turn::PlayerMoving;
+        self.advance_player_movement(0.0);
+        true
+    }
+
+    pub fn attack_monster_at(&mut self, target: Position) -> bool {
+        if self.turn != Turn::Player || self.is_over() {
+            return false;
+        }
+        let player = self.player.position();
+        let Some(i) = self.monsters.iter().position(|monster| {
+            monster.position() == target && crate::mapas::dist(player, target) == 1
+        }) else {
+            return false;
+        };
+        self.damage_monster(i, 10);
+        if !self.is_over() {
+            self.start_monster_turns();
+        }
+        true
     }
 
     fn advance_player_movement(&mut self, dt: f32) {

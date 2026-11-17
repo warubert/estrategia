@@ -146,12 +146,17 @@ pub fn setup_renderer(
 pub fn render_game<M: GameMap, P: PlayerActions, N: MonsterBehavior>(
     game: &Game<M, P, N>,
     mouse: Option<(f32, f32)>,
+    preview_enabled: bool,
     meshes: &mut Assets<Mesh>,
     visuals: &WorldVisuals,
 ) {
     let mut geometry = Geometry::default();
     let hovered = mouse.and_then(|mouse| game.hovered_tile(mouse));
-    let preview_path = mouse.map_or_else(Vec::new, |mouse| game.preview_path(mouse));
+    let preview_path = if preview_enabled {
+        mouse.map_or_else(Vec::new, |mouse| game.preview_path(mouse))
+    } else {
+        vec![]
+    };
 
     for depth in 0..(MAP * 2 - 1) {
         for y in 0..MAP {

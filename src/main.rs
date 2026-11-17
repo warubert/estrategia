@@ -6,15 +6,23 @@ mod mapas;
 mod monstros;
 mod personagens;
 mod renderer;
+mod ui;
 
-use bevy::{sprite::Anchor, window::PrimaryWindow};
+use bevy::{
+    picking::hover::Hovered, sprite::Anchor, ui::InteractionDisabled, window::PrimaryWindow,
+};
 use game::Game;
 use personagens::PlayerActions;
 use renderer::WorldVisuals;
 use std::collections::{HashMap, HashSet};
+use ui::action_menu::{
+    ActionMenuButton, ActionMenuState, ActionMenuWindow, ActionMode, ActionOption,
+};
+use ui::window::{self, WindowButtonFocus};
 
 const WINDOW_WIDTH: u32 = 1280;
 const WINDOW_HEIGHT: u32 = 720;
+const GAME_FONT_PATH: &str = "fonts/Lato-Regular.ttf";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AppState {
@@ -55,16 +63,27 @@ fn main() {
         }))
         .insert_resource(ClearColor(Color::WHITE))
         .init_resource::<FloatingTextEntities>()
+        .init_resource::<ActionMenuState>()
         .add_systems(Startup, (setup_game, renderer::setup_renderer))
         .add_systems(
             Update,
-            (handle_input, sync_floating_texts, update_ui, render_world).chain(),
+            (
+                handle_input,
+                sync_floating_texts,
+                update_ui,
+                update_action_menu,
+                window::update_button_appearance,
+                render_world,
+            )
+                .chain(),
         )
         .run();
 }
 
-fn setup_game(mut commands: Commands) {
+fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font = asset_server.load(GAME_FONT_PATH);
     commands.spawn((Camera2d, Transform::from_xyz(0.0, 0.0, 100.0)));
+    ui::action_menu::spawn_action_menu(&mut commands, &font);
     commands.insert_resource(GameSession {
         game: Game::new(),
         state: AppState::Menu,
@@ -72,6 +91,7 @@ fn setup_game(mut commands: Commands) {
 
     let menu = spawn_text(
         &mut commands,
+        &font,
         "Menu - pressione Enter para começar",
         36.0,
         Color::BLACK,
@@ -81,6 +101,7 @@ fn setup_game(mut commands: Commands) {
     );
     let hud = spawn_text(
         &mut commands,
+        &font,
         "",
         24.0,
         Color::BLACK,
@@ -90,6 +111,7 @@ fn setup_game(mut commands: Commands) {
     );
     let game_over_title = spawn_text(
         &mut commands,
+        &font,
         "",
         60.0,
         Color::srgb(0.8, 0.0, 0.0),
@@ -99,6 +121,7 @@ fn setup_game(mut commands: Commands) {
     );
     let game_over_score = spawn_text(
         &mut commands,
+        &font,
         "",
         30.0,
         Color::BLACK,
@@ -108,6 +131,7 @@ fn setup_game(mut commands: Commands) {
     );
     let restart_prompt = spawn_text(
         &mut commands,
+        &font,
         "Enter para voltar ao menu",
         20.0,
         Color::srgb(0.5, 0.5, 0.5),
@@ -139,6 +163,7 @@ fn setup_game(mut commands: Commands) {
 
 fn spawn_text(
     commands: &mut Commands,
+    font: &Handle<Font>,
     text: &str,
     size: f32,
     color: Color,
@@ -149,7 +174,7 @@ fn spawn_text(
     commands
         .spawn((
             Text2d::new(text),
-            TextFont::from_font_size(FontSize::Px(size)),
+            TextFont::from_font_size(FontSize::Px(size)).with_font(font.clone()),
             TextColor(color),
             anchor,
             Transform::from_translation(position),
@@ -160,15 +185,34 @@ fn spawn_text(
 
 fn handle_input(
     mut session: ResMut<GameSession>,
+    mut action_menu: ResMut<ActionMenuState>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<PrimaryWindow>>,
+    action_buttons: Query<(&ActionMenuButton, &Hovered, Has<InteractionDisabled>)>,
+    action_window_hover: Query<&Hovered, With<ActionMenuWindow>>,
     time: Res<Time>,
 ) {
-    if keyboard.just_pressed(KeyCode::Enter) {
+    if session.state == AppState::Playing {
+        if keyboard.just_pressed(KeyCode::Escape) {
+            action_menu.back();
+        } else if session.game.is_player_action_turn() && action_menu.mode() == ActionMode::Menu {
+            if keyboard.just_pressed(KeyCode::ArrowUp) {
+                action_menu.navigate(-1, session.game.can_attack());
+            }
+            if keyboard.just_pressed(KeyCode::ArrowDown) {
+                action_menu.navigate(1, session.game.can_attack());
+            }
+            if keyboard.just_pressed(KeyCode::Enter) {
+                let action = action_menu.activate_selected(session.game.can_attack());
+                apply_menu_action(&mut session.game, &mut action_menu, action);
+            }
+        }
+    } else if keyboard.just_pressed(KeyCode::Enter) {
         match session.state {
             AppState::Menu => {
                 session.game = Game::new();
+                action_menu.reset();
                 session.state = AppState::Playing;
             }
             AppState::GameOver => session.state = AppState::Menu,
@@ -180,17 +224,42 @@ fn handle_input(
         return;
     }
 
-    if mouse_buttons.just_pressed(MouseButton::Left)
-        && let Some(cursor) = windows
-            .single()
-            .expect("exactly one primary window must exist")
-            .cursor_position()
-    {
-        session.game.click((cursor.x, cursor.y));
+    if mouse_buttons.just_pressed(MouseButton::Left) {
+        if let Some(option) = ui::action_menu::hovered_action(&action_buttons) {
+            let action = action_menu.activate(option, session.game.can_attack());
+            apply_menu_action(&mut session.game, &mut action_menu, action);
+        } else if !action_window_hover.iter().any(|hovered| hovered.get())
+            && session.game.is_player_action_turn()
+            && let Some(cursor) = windows
+                .single()
+                .expect("exactly one primary window must exist")
+                .cursor_position()
+            && let Some(target) = session.game.hovered_tile((cursor.x, cursor.y))
+        {
+            let action_consumed = match action_menu.mode() {
+                ActionMode::Menu => false,
+                ActionMode::MoveTarget => session.game.move_player_to(target),
+                ActionMode::AttackTarget => session.game.attack_monster_at(target),
+            };
+            if action_consumed {
+                action_menu.finish_action();
+            }
+        }
     }
 
     if session.game.update(time.delta_secs()) {
         session.state = AppState::GameOver;
+    }
+}
+
+fn apply_menu_action(
+    game: &mut Game,
+    action_menu: &mut ActionMenuState,
+    action: Option<ActionOption>,
+) {
+    if action == Some(ActionOption::EndTurn) {
+        game.end_player_turn();
+        action_menu.finish_action();
     }
 }
 
@@ -211,7 +280,7 @@ fn update_ui(
         &mut texts,
         ui.hud,
         format!(
-            "HP: {}\nScore: {}\n{}",
+            "HP: {}\nPontuação: {}\n{}",
             session.game.player().health(),
             session.game.player().score(),
             session.game.turn_text()
@@ -248,9 +317,52 @@ fn update_ui(
     set_visibility(&mut visibility, ui.overlay, overlay);
 }
 
+fn update_action_menu(
+    session: Res<GameSession>,
+    action_menu: Res<ActionMenuState>,
+    mut windows: Query<&mut Visibility, With<ActionMenuWindow>>,
+    mut buttons: Query<(
+        Entity,
+        &ActionMenuButton,
+        Has<InteractionDisabled>,
+        Has<WindowButtonFocus>,
+    )>,
+    mut commands: Commands,
+) {
+    let visible = session.state == AppState::Playing && session.game.is_player_action_turn();
+    for mut visibility in &mut windows {
+        *visibility = if visible {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    for (entity, button, disabled, focused) in &mut buttons {
+        let should_disable = button.0 == ActionOption::Attack && !session.game.can_attack();
+        if should_disable != disabled {
+            if should_disable {
+                commands.entity(entity).insert(InteractionDisabled);
+            } else {
+                commands.entity(entity).remove::<InteractionDisabled>();
+            }
+        }
+
+        let should_focus = action_menu.selected() == button.0;
+        if should_focus != focused {
+            if should_focus {
+                commands.entity(entity).insert(WindowButtonFocus);
+            } else {
+                commands.entity(entity).remove::<WindowButtonFocus>();
+            }
+        }
+    }
+}
+
 fn sync_floating_texts(
     mut commands: Commands,
     session: Res<GameSession>,
+    asset_server: Res<AssetServer>,
     mut entities: ResMut<FloatingTextEntities>,
     mut text_query: Query<(&mut Text2d, &mut Transform)>,
 ) {
@@ -298,7 +410,8 @@ fn sync_floating_texts(
             let entity = commands
                 .spawn((
                     Text2d::new(label),
-                    TextFont::from_font_size(FontSize::Px(20.0)),
+                    TextFont::from_font_size(FontSize::Px(20.0))
+                        .with_font(asset_server.load(GAME_FONT_PATH)),
                     TextColor(color),
                     Anchor::BOTTOM_LEFT,
                     Transform::from_translation(position),
@@ -330,6 +443,7 @@ fn set_visibility(visibility: &mut Query<&mut Visibility>, entity: Entity, visib
 
 fn render_world(
     session: Res<GameSession>,
+    action_menu: Res<ActionMenuState>,
     windows: Query<&Window, With<PrimaryWindow>>,
     visuals: Res<WorldVisuals>,
     mut visibility: Query<&mut Visibility>,
@@ -348,5 +462,13 @@ fn render_world(
         .expect("exactly one primary window must exist")
         .cursor_position()
         .map(|position| (position.x, position.y));
-    renderer::render_game(&session.game, cursor, &mut meshes, &visuals);
+    let preview_enabled =
+        action_menu.mode() == ActionMode::MoveTarget || session.game.is_player_moving();
+    renderer::render_game(
+        &session.game,
+        cursor,
+        preview_enabled,
+        &mut meshes,
+        &visuals,
+    );
 }

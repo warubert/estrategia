@@ -32,7 +32,7 @@ fn game_can_use_an_alternative_map_implementation() {
         next_text_id: 0,
         gold: vec![],
     };
-    game.player_action((3, 2));
+    game.move_player_to((3, 2));
     assert_eq!(game.player.position(), (3, 2));
     assert_eq!(game.turn, Turn::Monster(0));
 }
@@ -46,18 +46,60 @@ fn screen_click_selects_the_isometric_tile_and_starts_its_path() {
     assert_eq!(game.hovered_tile(cursor), Some((4, 2)));
     assert_eq!(game.preview_path(cursor).last(), Some(&(4, 2)));
 
-    game.click(cursor);
+    game.move_player_to(game.hovered_tile(cursor).unwrap());
 
     assert_eq!(game.turn, Turn::PlayerMoving);
     assert_eq!(game.player.position(), (3, 2));
 }
 
 #[test]
-fn screen_click_outside_the_map_does_not_consume_the_turn() {
+fn coordinates_outside_the_map_do_not_select_a_tile() {
+    let game = Game::with_camera((0.0, 0.0));
+    assert_eq!(game.hovered_tile((-1000.0, -1000.0)), None);
+}
+
+#[test]
+fn move_action_only_moves_and_attack_is_disabled_without_an_adjacent_monster() {
     let mut game = Game::with_camera((0.0, 0.0));
+    game.monsters = vec![monster(4, 2, 30)];
+    assert!(!game.can_attack());
 
-    game.click((-1000.0, -1000.0));
+    game.move_player_to((3, 2));
+    while game.turn == Turn::PlayerMoving {
+        game.advance_player_movement(PLAYER_STEP_DELAY);
+    }
 
+    assert_eq!(game.player.position(), (3, 2));
+    assert_eq!(game.monsters[0].health(), 30);
+    assert_eq!(game.turn, Turn::Monster(0));
+}
+
+#[test]
+fn attack_action_only_damages_an_adjacent_monster() {
+    let mut game = Game::with_camera((0.0, 0.0));
+    game.monsters = vec![monster(3, 2, 30), monster(8, 8, 30)];
+    assert!(game.can_attack());
+
+    assert!(!game.attack_monster_at((8, 8)));
+    assert_eq!(game.monsters[0].health(), 30);
+    assert_eq!(game.monsters[1].health(), 30);
+    assert_eq!(game.turn, Turn::Player);
+
+    assert!(game.attack_monster_at((3, 2)));
+    assert_eq!(game.monsters[0].health(), 20);
+    assert_eq!(game.turn, Turn::Monster(0));
+}
+
+#[test]
+fn ending_player_turn_runs_monsters_then_returns_to_action_menu() {
+    let mut game = Game::with_camera((0.0, 0.0));
+    game.monsters = vec![monster(15, 15, 30), monster(17, 17, 30)];
+    game.end_player_turn();
+    assert_eq!(game.turn, Turn::Monster(0));
+
+    game.advance_monster_turn(MONSTER_TURN_DELAY);
+    assert_eq!(game.turn, Turn::Monster(1));
+    game.advance_monster_turn(MONSTER_TURN_DELAY);
     assert_eq!(game.turn, Turn::Player);
 }
 
@@ -65,16 +107,28 @@ fn monster(x: usize, y: usize, hp: i32) -> Goblin {
     Goblin::new((x, y), hp)
 }
 
+fn act_at(game: &mut Game, target: Position) {
+    let adjacent_monster = game
+        .monsters()
+        .iter()
+        .any(|monster| monster.position() == target && dist(game.player().position(), target) == 1);
+    if adjacent_monster {
+        game.attack_monster_at(target);
+    } else {
+        game.move_player_to(target);
+    }
+}
+
 #[test]
 fn player_reaches_destination_then_monsters_act_once_in_order() {
     let mut game = Game::with_camera((0.0, 0.0));
     game.monsters = vec![monster(8, 2, 30), monster(12, 4, 30)];
-    game.player_action((4, 2));
+    act_at(&mut game, (4, 2));
     assert_eq!(game.player.position(), (3, 2));
     assert_eq!(game.turn, Turn::PlayerMoving);
     assert_eq!(game.player.score(), 0);
 
-    game.player_action((2, 2));
+    act_at(&mut game, (2, 2));
     game.advance_monster_turn(MONSTER_TURN_DELAY);
     assert_eq!(game.player.position(), (3, 2));
     assert_eq!(game.monsters[0].position(), (8, 2));
@@ -106,7 +160,7 @@ fn path_detours_around_monsters_and_collects_gold_on_the_way() {
     assert!(!path.is_empty());
     assert!(!path.contains(&(3, 2)));
     game.gold = vec![path[0], *path.last().unwrap()];
-    game.player_action((5, 2));
+    act_at(&mut game, (5, 2));
     while game.turn == Turn::PlayerMoving {
         game.advance_player_movement(PLAYER_STEP_DELAY);
     }
@@ -121,7 +175,7 @@ fn path_detours_around_monsters_and_collects_gold_on_the_way() {
 fn distant_monster_requires_separate_movement_and_attack_actions() {
     let mut game = Game::with_camera((0.0, 0.0));
     game.monsters = vec![monster(5, 2, 30)];
-    game.player_action((5, 2));
+    act_at(&mut game, (5, 2));
     while game.turn == Turn::PlayerMoving {
         game.advance_player_movement(PLAYER_STEP_DELAY);
     }
@@ -130,7 +184,7 @@ fn distant_monster_requires_separate_movement_and_attack_actions() {
     assert_eq!(game.turn, Turn::Monster(0));
     game.advance_monster_turn(MONSTER_TURN_DELAY);
     assert_eq!(game.player.health(), 95);
-    game.player_action((5, 2));
+    act_at(&mut game, (5, 2));
     assert_eq!(game.monsters[0].health(), 20);
     assert_eq!(game.player.position(), (4, 2));
     assert_eq!(game.turn, Turn::Monster(0));
@@ -139,7 +193,7 @@ fn distant_monster_requires_separate_movement_and_attack_actions() {
 #[test]
 fn path_is_cancelled_if_a_future_tile_becomes_blocked() {
     let mut game = Game::with_camera((0.0, 0.0));
-    game.player_action((4, 2));
+    act_at(&mut game, (4, 2));
     game.map.set_tile((4, 2), Tile::Wall);
     game.advance_player_movement(PLAYER_STEP_DELAY);
     assert_eq!(game.player.position(), (3, 2));
@@ -151,14 +205,14 @@ fn path_is_cancelled_if_a_future_tile_becomes_blocked() {
 fn invalid_clicks_do_not_consume_the_turn() {
     let mut game = Game::with_camera((0.0, 0.0));
     for target in [(2, 2), (0, 2), (MAP, 2), (5, 5)] {
-        game.player_action(target);
+        act_at(&mut game, target);
         assert_eq!(game.turn, Turn::Player);
         assert_eq!(game.player.position(), (2, 2));
     }
     for (x, y) in [(3, 2), (1, 2), (2, 1), (2, 3)] {
         game.map.set_tile((x, y), Tile::Wall);
     }
-    game.player_action((4, 2));
+    act_at(&mut game, (4, 2));
     assert_eq!(game.turn, Turn::Player);
 }
 
@@ -167,7 +221,7 @@ fn player_collects_gold_and_attack_consumes_a_turn() {
     let mut game = Game::with_camera((0.0, 0.0));
     game.gold = vec![(3, 2)];
     game.monsters = vec![monster(4, 2, 30)];
-    game.player_action((3, 2));
+    act_at(&mut game, (3, 2));
     assert!(game.gold.is_empty());
     assert_eq!(game.player.score(), 100);
     assert_eq!(game.turn, Turn::Monster(0));
@@ -175,7 +229,7 @@ fn player_collects_gold_and_attack_consumes_a_turn() {
     assert_eq!(game.player.health(), 95);
     assert_eq!(game.turn, Turn::Player);
 
-    game.player_action((4, 2));
+    act_at(&mut game, (4, 2));
     assert_eq!(game.player.position(), (3, 2));
     assert_eq!(game.monsters[0].health(), 20);
     assert_eq!(game.turn, Turn::Monster(0));
@@ -185,14 +239,14 @@ fn player_collects_gold_and_attack_consumes_a_turn() {
 fn defeated_monsters_do_not_take_a_turn_and_victory_is_immediate() {
     let mut game = Game::with_camera((0.0, 0.0));
     game.monsters = vec![monster(3, 2, 10), monster(2, 3, 10)];
-    game.player_action((3, 2));
+    act_at(&mut game, (3, 2));
     assert_eq!(game.player.score(), 50);
     assert_eq!(game.monsters.len(), 1);
     assert_eq!(game.turn, Turn::Monster(0));
     game.advance_monster_turn(MONSTER_TURN_DELAY);
     assert_eq!(game.player.health(), 95);
     assert_eq!(game.turn, Turn::Player);
-    game.player_action((2, 3));
+    act_at(&mut game, (2, 3));
     assert!(game.is_over());
     assert_eq!(game.player.score(), 100);
     assert_eq!(game.player.health(), 95);
@@ -203,7 +257,7 @@ fn defeat_stops_remaining_monster_turns() {
     let mut game = Game::with_camera((0.0, 0.0));
     game.player.take_damage(95);
     game.monsters = vec![monster(4, 2, 30), monster(3, 3, 30)];
-    game.player_action((3, 2));
+    act_at(&mut game, (3, 2));
     game.advance_monster_turn(MONSTER_TURN_DELAY);
     assert!(game.is_over());
     game.advance_monster_turn(MONSTER_TURN_DELAY);
@@ -215,7 +269,7 @@ fn defeat_stops_remaining_monster_turns() {
 fn blocked_monster_passes_without_overlapping_another() {
     let mut game = Game::with_camera((0.0, 0.0));
     game.monsters = vec![monster(4, 2, 30), monster(5, 2, 30)];
-    game.player_action((3, 2));
+    act_at(&mut game, (3, 2));
     game.advance_monster_turn(MONSTER_TURN_DELAY);
     assert_eq!(game.player.health(), 95);
     game.advance_monster_turn(MONSTER_TURN_DELAY);
@@ -229,7 +283,7 @@ fn three_attacks_take_three_turns_and_award_kill_points_once() {
     game.monsters = vec![monster(3, 2, 30)];
 
     for expected_health in [20, 10] {
-        game.player_action((3, 2));
+        act_at(&mut game, (3, 2));
         assert_eq!(game.monsters[0].health(), expected_health);
         assert_eq!(game.player.position(), (2, 2));
         assert_eq!(game.turn, Turn::Monster(0));
@@ -237,11 +291,11 @@ fn three_attacks_take_three_turns_and_award_kill_points_once() {
         assert_eq!(game.turn, Turn::Player);
     }
     assert_eq!(game.player.health(), 90);
-    game.player_action((3, 2));
+    act_at(&mut game, (3, 2));
     assert!(game.is_over());
     assert!(game.monsters.is_empty());
     assert_eq!(game.player.score(), 50);
-    game.player_action((2, 3));
+    act_at(&mut game, (2, 3));
     game.advance_monster_turn(MONSTER_TURN_DELAY);
     assert_eq!(game.player.score(), 50);
     assert_eq!(game.player.health(), 90);
@@ -252,14 +306,14 @@ fn revisiting_a_collected_coin_does_not_award_more_points() {
     let mut game = Game::with_camera((0.0, 0.0));
     game.monsters = vec![monster(15, 15, 30)];
     game.gold = vec![(3, 2)];
-    game.player_action((3, 2));
+    act_at(&mut game, (3, 2));
     assert_eq!(game.player.score(), 100);
     assert_eq!(game.texts.len(), 1);
     assert_eq!(game.texts[0].dmg, -100);
     game.advance_monster_turn(MONSTER_TURN_DELAY);
-    game.player_action((2, 2));
+    act_at(&mut game, (2, 2));
     game.advance_monster_turn(MONSTER_TURN_DELAY);
-    game.player_action((3, 2));
+    act_at(&mut game, (3, 2));
     assert_eq!(game.player.position(), (3, 2));
     assert_eq!(game.player.score(), 100);
     assert!(game.gold.is_empty());
@@ -272,7 +326,7 @@ fn preview_and_movement_stop_before_distant_monster() {
     game.monsters = vec![monster(6, 2, 30)];
     let path = game.player_path((6, 2));
     assert_eq!(path, vec![(3, 2), (4, 2), (5, 2)]);
-    game.player_action((6, 2));
+    act_at(&mut game, (6, 2));
     for _ in 0..path.len() - 1 {
         game.advance_player_movement(PLAYER_STEP_DELAY);
     }
@@ -286,7 +340,7 @@ fn preview_and_movement_stop_before_distant_monster() {
 fn newly_occupied_next_step_cancels_movement_without_attacking() {
     let mut game = Game::with_camera((0.0, 0.0));
     game.monsters = vec![monster(8, 2, 30)];
-    game.player_action((5, 2));
+    act_at(&mut game, (5, 2));
     assert_eq!(game.player.position(), (3, 2));
     game.monsters.push(monster(4, 2, 30));
     game.advance_player_movement(PLAYER_STEP_DELAY);
@@ -301,8 +355,8 @@ fn dead_player_cannot_start_movement_or_attack() {
     let mut game = Game::with_camera((0.0, 0.0));
     game.monsters = vec![monster(3, 2, 30)];
     game.player.take_damage(100);
-    game.player_action((3, 2));
-    game.player_action((2, 3));
+    act_at(&mut game, (3, 2));
+    act_at(&mut game, (2, 3));
     assert_eq!(game.monsters[0].health(), 30);
     assert_eq!(game.player.position(), (2, 2));
     assert_eq!(game.turn, Turn::Player);
